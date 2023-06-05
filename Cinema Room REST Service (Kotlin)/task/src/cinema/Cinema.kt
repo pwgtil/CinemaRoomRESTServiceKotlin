@@ -13,8 +13,8 @@ class Cinema(noOfRows: Int, noOfColumns: Int) {
     val seats = buildList {
         for (r in 1..rows) {
             for (c in 1..columns) {
-                add(Seat(r, c))
+                add(PricedSeat(r, c, if (r > 4) 8 else 10))
             }
         }
-    }
+    }.toMutableList()
 }
