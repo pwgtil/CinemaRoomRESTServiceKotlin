@@ -1,22 +1,29 @@
 package cinema
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import org.jetbrains.annotations.NotNull
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 const val ERROR_MSG_SEAT_OUT_OF_BOUNDS = "The number of a row or a column is out of bounds!"
 const val ERROR_MSG_SEAT_TAKEN = "The ticket has been already purchased!"
 const val ERROR_MSG_WRONG_TOKEN = "Wrong token!"
+const val ERROR_MSG_WRONG_PASSWORD = "The password is wrong!"
+const val NO_OF_ROWS = 9
+const val NO_OF_COLUMNS = 9
+const val SECRET_KEY = "super_secret"
 
 @RestController
 class Controller {
-    private val cinema: Cinema = Cinema(9, 9)
+    private val cinema: Cinema = Cinema(NO_OF_ROWS, NO_OF_COLUMNS)
     private val soldSeats: MutableList<SoldSeat> = mutableListOf()
+    private val salesStats = SalesStats(NO_OF_ROWS, NO_OF_COLUMNS)
 
     @GetMapping("/seats")
     fun getInfo(): Cinema {
@@ -36,16 +43,18 @@ class Controller {
         }
 
         // check if seat is already taken
-        val seat = cinema.seats.find { it.row == seat.row && it.column == seat.column } ?: return ResponseEntity(
-            object {
-                val error = ERROR_MSG_SEAT_TAKEN
-            }, HttpStatus.BAD_REQUEST
-        )
+        val retrievedSeat =
+            cinema.seats.find { it.row == seat.row && it.column == seat.column } ?: return ResponseEntity(
+                object {
+                    val error = ERROR_MSG_SEAT_TAKEN
+                }, HttpStatus.BAD_REQUEST
+            )
 
         // all seems ok, let's purchase the ticket and generate token
         val token = UUID.randomUUID().toString()
-        val soldSeat = SoldSeat(token, seat)
-        cinema.seats.remove(seat)
+        val soldSeat = SoldSeat(token, retrievedSeat)
+        cinema.seats.remove(retrievedSeat)
+        salesStats.saleTicket(retrievedSeat)
         soldSeats.add(soldSeat)
         return ResponseEntity(soldSeat, HttpStatus.OK)
     }
@@ -60,10 +69,24 @@ class Controller {
             }, HttpStatus.BAD_REQUEST)
 
         soldSeats.remove(soldSeat)
-        cinema.seats.add(soldSeat.ticket!!)
+        salesStats.returnTicket(soldSeat.ticket!!) // safety ensured above
+        cinema.seats.add(soldSeat.ticket)
         return ResponseEntity(object {
             @JsonProperty("returned_ticket")
             val ticket = soldSeat.ticket
         }, HttpStatus.OK)
+    }
+
+    @PostMapping("stats")
+    fun getStatistics(@RequestParam password: String?): ResponseEntity<Any> {
+
+        // check pass
+        return if (password != SECRET_KEY) {
+            ResponseEntity(object {
+                val error = ERROR_MSG_WRONG_PASSWORD
+            }, HttpStatus.UNAUTHORIZED)
+        } else {
+            ResponseEntity(salesStats, HttpStatus.OK)
+        }
     }
 }
